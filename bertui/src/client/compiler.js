@@ -1,12 +1,13 @@
 // src/client/compiler.js
 import { existsSync, mkdirSync, readdirSync, statSync } from 'fs';
-import { join, extname, relative } from 'path';
+import { join, extname, relative, sep } from 'path';
 import logger from '../logger/logger.js';
 
 export async function compileProject(root) {
   logger.bigLog('COMPILING PROJECT', { color: 'blue' });
   
   const srcDir = join(root, 'src');
+  const pagesDir = join(srcDir, 'pages');
   const outDir = join(root, '.bertui', 'compiled');
   
   // Check if src exists
@@ -21,6 +22,28 @@ export async function compileProject(root) {
     logger.info('Created .bertui/compiled/');
   }
   
+  // Discover routes if pages directory exists
+  let routes = [];
+  if (existsSync(pagesDir)) {
+    routes = await discoverRoutes(pagesDir);
+    logger.info(`Discovered ${routes.length} routes`);
+    
+    // Display routes table
+    if (routes.length > 0) {
+      logger.bigLog('ROUTES DISCOVERED', { color: 'blue' });
+      logger.table(routes.map((r, i) => ({
+        '': i,
+        route: r.route,
+        file: r.file,
+        type: r.type
+      })));
+      
+      // Generate router file
+      await generateRouter(routes, outDir);
+      logger.info('Generated router.js');
+    }
+  }
+  
   // Compile all files
   const startTime = Date.now();
   const stats = await compileDirectory(srcDir, outDir, root);
@@ -29,7 +52,116 @@ export async function compileProject(root) {
   logger.success(`Compiled ${stats.files} files in ${duration}ms`);
   logger.info(`Output: ${outDir}`);
   
-  return { outDir, stats };
+  return { outDir, stats, routes };
+}
+
+async function discoverRoutes(pagesDir) {
+  const routes = [];
+  
+  async function scanDirectory(dir, basePath = '') {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      const relativePath = join(basePath, entry.name);
+      
+      if (entry.isDirectory()) {
+        // Recursively scan subdirectories
+        await scanDirectory(fullPath, relativePath);
+      } else if (entry.isFile()) {
+        const ext = extname(entry.name);
+        if (['.jsx', '.tsx', '.js', '.ts'].includes(ext)) {
+          const fileName = entry.name.replace(ext, '');
+          
+          // Generate route path
+          let route = '/' + relativePath.replace(/\\/g, '/').replace(ext, '');
+          
+          // Handle index files
+          if (fileName === 'index') {
+            route = route.replace('/index', '') || '/';
+          }
+          
+          // Determine route type
+          const isDynamic = fileName.includes('[') && fileName.includes(']');
+          const type = isDynamic ? 'dynamic' : 'static';
+          
+          routes.push({
+            route: route === '' ? '/' : route,
+            file: relativePath,
+            path: fullPath,
+            type
+          });
+        }
+      }
+    }
+  }
+  
+  await scanDirectory(pagesDir);
+  
+  // Sort routes: static routes first, then dynamic
+  routes.sort((a, b) => {
+    if (a.type === b.type) {
+      return a.route.localeCompare(b.route);
+    }
+    return a.type === 'static' ? -1 : 1;
+  });
+  
+  return routes;
+}
+
+async function generateRouter(routes, outDir) {
+  const imports = routes.map((route, i) => {
+    const componentName = `Page${i}`;
+    const importPath = `./pages/${route.file.replace(/\\/g, '/')}`;
+    return `import ${componentName} from '${importPath}';`;
+  }).join('\n');
+  
+  const routeConfigs = routes.map((route, i) => {
+    const componentName = `Page${i}`;
+    return `  { path: '${route.route}', component: ${componentName}, type: '${route.type}' }`;
+  }).join(',\n');
+  
+  const routerCode = `// Auto-generated router - DO NOT EDIT
+${imports}
+
+export const routes = [
+${routeConfigs}
+];
+
+export function matchRoute(pathname) {
+  // Try exact match first
+  for (const route of routes) {
+    if (route.type === 'static' && route.path === pathname) {
+      return route;
+    }
+  }
+  
+  // Try dynamic routes
+  for (const route of routes) {
+    if (route.type === 'dynamic') {
+      const pattern = route.path.replace(/\\[([^\\]]+)\\]/g, '([^/]+)');
+      const regex = new RegExp('^' + pattern + '$');
+      const match = pathname.match(regex);
+      
+      if (match) {
+        // Extract params
+        const paramNames = [...route.path.matchAll(/\\[([^\\]]+)\\]/g)].map(m => m[1]);
+        const params = {};
+        paramNames.forEach((name, i) => {
+          params[name] = match[i + 1];
+        });
+        
+        return { ...route, params };
+      }
+    }
+  }
+  
+  return null;
+}
+`;
+  
+  const routerPath = join(outDir, 'router.js');
+  await Bun.write(routerPath, routerCode);
 }
 
 async function compileDirectory(srcDir, outDir, root) {

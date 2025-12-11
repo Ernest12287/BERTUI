@@ -1,52 +1,56 @@
-# BertUI ⚡
+# BertUI App
 
-Lightning-fast React development powered by Bun.
+A lightning-fast React application built with [BertUI](https://github.com/BunElysiaReact/BERTUI).
 
-## Features
+## 🚀 Getting Started
 
-- ⚡ **Blazing Fast** - Built on Bun
-- 🎨 **Built-in Animations** - 15+ CSS utility classes
-- 🔥 **Hot Module Replacement** - Instant updates
-- 📦 **Zero Config** - Works out of the box
-- 🚀 **Production Ready** - Optimized builds
+### Development
+\`\`\`bash
+bun run dev
+\`\`\`
 
-## Installation
-```bash
-bun add bertui react react-dom
-```
+Open [http://localhost:3000](http://localhost:3000) to view your app.
 
-## Usage
-```javascript
-// src/main.jsx
-import 'bertui/styles';
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+### Build for Production
+\`\`\`bash
+bun run build
+\`\`\`
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <h1 className="split fadein">Hello BertUI!</h1>
-);
-```
+## 📁 Project Structure
 
-## Commands
-```bash
-bertui dev         # Start dev server
-bertui build       # Build for production
-```
+\`\`\`
+src/
+├── pages/          # File-based routes
+│   ├── index.jsx   # Home page (/)
+│   ├── about.jsx   # About page (/about)
+│   └── blog/       # Blog section
+├── components/     # Reusable components
+└── styles/         # Global styles
+\`\`\`
 
-## CSS Classes
+## 📚 Learn More
 
-- `.split` - Split text animation
-- `.moveright` - Slide from left
-- `.moveleft` - Slide from right
-- `.fadein` - Fade in
-- `.scalein` - Scale in
-- `.bouncein` - Bounce in
-- `.slideup` - Slide up
-- `.slidedown` - Slide down
-- `.rotatein` - Rotate in
-- `.pulse` - Pulse animation
-- `.shake` - Shake animation
+- [BertUI Documentation](https://github.com/BunElysiaReact/BERTUI)
+- [Routing Guide](https://github.com/BunElysiaReact/BERTUI#routing)
+- [Built-in Animations](https://github.com/BunElysiaReact/BERTUI#animations)
 
-## License
+## 🎨 Built-in CSS Classes
 
-MIT
+BertUI includes ready-to-use animation utilities:
+
+- \`.fadein\` - Fade in animation
+- \`.scalein\` - Scale in animation
+- \`.bouncein\` - Bounce in animation
+- \`.moveright\` / \`.moveleft\` - Slide animations
+- \`.slideup\` / \`.slidedown\` - Vertical slide
+- \`.rotatein\` - Rotate in animation
+- \`.pulse\` - Pulsing animation
+- \`.shake\` - Shake animation
+- \`.split\` - Split text animation
+
+## 📦 Adding Dependencies
+
+\`\`\`bash
+bun add <package-name>
+\`\`\`
+\`\`\`

@@ -2,35 +2,83 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-// --- 1. Get arguments
-const projectName = Bun.argv[2]; // Bun.argv is similar to process.argv
+const projectName = Bun.argv[2];
 
+// Color codes for better output
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  cyan: '\x1b[36m',
+};
+
+function log(message, color = colors.reset) {
+  console.log(`${color}${message}${colors.reset}`);
+}
+
+// Validate project name
 if (!projectName) {
-  console.error("Please specify the project name: bunx create-bertui <app-name>");
+  log('\n❌ Error: Please specify the project name', colors.red);
+  log('\nUsage:', colors.yellow);
+  log('  bunx create-bertui <app-name>\n', colors.cyan);
+  process.exit(1);
+}
+
+// Check if project name is valid
+const validNameRegex = /^[a-zA-Z0-9-_]+$/;
+if (!validNameRegex.test(projectName)) {
+  log('\n❌ Error: Invalid project name', colors.red);
+  log('Project name can only contain letters, numbers, hyphens, and underscores\n', colors.yellow);
   process.exit(1);
 }
 
 const targetDir = path.join(process.cwd(), projectName);
-const templateDir = path.join(import.meta.dir, '..', 'template'); // Locate the template folder
+const templateDir = path.join(import.meta.dir, '..', 'template');
 
-// --- 2. Define the core recursive copy logic
-async function copyRecursive(src, dest) {
+// Check if directory already exists
+async function checkDirectory() {
+  try {
+    await fs.access(targetDir);
+    log(`\n❌ Error: Directory '${projectName}' already exists`, colors.red);
+    log('Please choose a different name or remove the existing directory\n', colors.yellow);
+    process.exit(1);
+  } catch {
+    // Directory doesn't exist, which is what we want
+  }
+}
+
+// Verify template exists
+async function verifyTemplate() {
+  try {
+    await fs.access(templateDir);
+  } catch {
+    log('\n❌ Error: Template directory not found', colors.red);
+    log('Please ensure create-bertui is installed correctly\n', colors.yellow);
+    process.exit(1);
+  }
+}
+
+// Copy files recursively with progress
+async function copyRecursive(src, dest, depth = 0) {
   await fs.mkdir(dest, { recursive: true });
   
-  // Use readdir for fast directory reading
-  const entries = await fs.readdir(src, { withFileTypes: true }); 
+  const entries = await fs.readdir(src, { withFileTypes: true });
 
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
     if (entry.isDirectory()) {
-      await copyRecursive(srcPath, destPath);
+      if (depth === 0) {
+        log(`  📁 Creating ${entry.name}/`, colors.cyan);
+      }
+      await copyRecursive(srcPath, destPath, depth + 1);
     } else {
-      // Bun.file(srcPath) is a fast way to get file contents
-      await Bun.write(destPath, Bun.file(srcPath)); 
+      await Bun.write(destPath, Bun.file(srcPath));
       
-      // Special case: NPM removes .gitignore, so we rename it in the template
+      // Handle .gitignore rename
       if (entry.name === 'gitignore') {
         await fs.rename(destPath, path.join(dest, '.gitignore'));
       }
@@ -38,20 +86,72 @@ async function copyRecursive(src, dest) {
   }
 }
 
-// --- 3. Execute setup
-try {
-  await copyRecursive(templateDir, targetDir);
+// Run bun install with proper error handling
+async function installDependencies() {
+  log('\n📦 Installing dependencies...', colors.cyan);
   
-  // Run install (Bun will handle this faster than npm/yarn)
-  const install = Bun.spawn(['bun', 'install'], { cwd: targetDir });
-  await install.exited; // Wait for installation to finish
-
-  console.log(`\n🎉 BertUI App '${projectName}' created successfully!`);
-  console.log(`\n👉 Next Steps:`);
-  console.log(`  cd ${projectName}`);
-  console.log(`  bertui dev (Starts the fast dev server)`);
+  try {
+    const proc = Bun.spawn(['bun', 'install'], {
+      cwd: targetDir,
+      stdout: 'inherit',
+      stderr: 'inherit',
+    });
+    
+    const exitCode = await proc.exited;
+    
+    if (exitCode !== 0) {
+      throw new Error(`bun install exited with code ${exitCode}`);
+    }
+    
+    log('✅ Dependencies installed successfully', colors.green);
+  } catch (error) {
+    log('\n⚠️  Warning: Failed to install dependencies automatically', colors.yellow);
+    log(`Error: ${error.message}`, colors.red);
+    log('\nYou can install them manually by running:', colors.yellow);
+    log(`  cd ${projectName}`, colors.cyan);
+    log(`  bun install\n`, colors.cyan);
+    return false;
+  }
   
-} catch (error) {
-  console.error(`\n❌ Failed to create project: ${error.message}`);
-  process.exit(1);
+  return true;
 }
+
+// Main setup function
+async function setup() {
+  try {
+    log('\n⚡ Creating BertUI project...', colors.bright);
+    
+    await checkDirectory();
+    await verifyTemplate();
+    
+    log('\n📋 Copying template files...', colors.cyan);
+    await copyRecursive(templateDir, targetDir);
+    log('✅ Template files copied', colors.green);
+    
+    const installed = await installDependencies();
+    
+    // Success message
+    log('\n' + '='.repeat(50), colors.green);
+    log(`🎉 BertUI App '${projectName}' created successfully!`, colors.bright + colors.green);
+    log('='.repeat(50) + '\n', colors.green);
+    
+    log('👉 Next Steps:', colors.bright);
+    log(`  cd ${projectName}`, colors.cyan);
+    
+    if (!installed) {
+      log(`  bun install`, colors.cyan);
+    }
+    
+    log(`  bun run dev`, colors.cyan);
+    log('\n💡 Tip: Use "bertui dev" for the fastest dev server experience!\n', colors.yellow);
+    
+  } catch (error) {
+    log(`\n❌ Failed to create project: ${error.message}`, colors.red);
+    if (error.stack) {
+      log(`\nStack trace:\n${error.stack}`, colors.red);
+    }
+    process.exit(1);
+  }
+}
+
+setup();
