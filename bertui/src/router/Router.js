@@ -23,9 +23,10 @@ export function Router({ routes }) {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [routes]);
 
   function matchAndSetRoute(pathname) {
+    // Try static routes first
     for (const route of routes) {
       if (route.type === 'static' && route.path === pathname) {
         setCurrentRoute(route);
@@ -34,6 +35,7 @@ export function Router({ routes }) {
       }
     }
 
+    // Try dynamic routes
     for (const route of routes) {
       if (route.type === 'dynamic') {
         const pattern = route.path.replace(/\[([^\]]+)\]/g, '([^/]+)');
@@ -54,6 +56,7 @@ export function Router({ routes }) {
       }
     }
 
+    // No match found
     setCurrentRoute(null);
     setParams({});
   }

@@ -1,16 +1,18 @@
-// bertui.config.js
-// Configuration for your BertUI app
-// See: https://github.com/BunElysiaReact/BERTUI.git#configuration
-
 export default {
   meta: {
-    title: "My BertUI App",
-    description: "Built with BertUI - Lightning fast React development",
-    keywords: "react, bun, bertui",
+    title: "BertUI - Lightning Fast React",
+    description: "Build lightning-fast React applications with file-based routing powered by Bun",
+    keywords: "react, bun, bertui, fast, file-based routing",
     author: "Your Name",
-    themeColor: "#10b981",
-    lang: "en"
+    themeColor: "#667eea",
+    lang: "en",
+    
+    // Open Graph for social sharing
+    ogTitle: "BertUI - Lightning Fast React Framework",
+    ogDescription: "Build lightning-fast React apps with zero config",
+    ogImage: "/public/og-image.png"
   },
+  
   appShell: {
     loading: true,
     loadingText: "Loading...",

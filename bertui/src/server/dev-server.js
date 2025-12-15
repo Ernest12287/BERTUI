@@ -1,15 +1,17 @@
-// src/server/dev-server.js
 import { Elysia } from 'elysia';
 import { watch } from 'fs';
 import { join, extname } from 'path';
 import { existsSync } from 'fs';
 import logger from '../logger/logger.js';
 import { compileProject } from '../client/compiler.js';
+import { loadConfig } from '../config/loadConfig.js';
 
 export async function startDevServer(options = {}) {
   const port = parseInt(options.port) || 3000;
   const root = options.root || process.cwd();
   const compiledDir = join(root, '.bertui', 'compiled');
+  
+  const config = await loadConfig(root);
   
   const clients = new Set();
   let hasRouter = false;
@@ -17,12 +19,12 @@ export async function startDevServer(options = {}) {
   const routerPath = join(compiledDir, 'router.js');
   if (existsSync(routerPath)) {
     hasRouter = true;
-    logger.info('Router-based routing enabled');
+    logger.info('File-based routing enabled');
   }
   
   const app = new Elysia()
     .get('/', async () => {
-      return serveHTML(root, hasRouter);
+      return serveHTML(root, hasRouter, config);
     })
     
     .get('/*', async ({ params, set }) => {
@@ -46,11 +48,21 @@ export async function startDevServer(options = {}) {
           }
         }
         
+        if (path.startsWith('public/')) {
+          const publicDir = join(root, 'public');
+          const filepath = join(publicDir, path.replace('public/', ''));
+          const file = Bun.file(filepath);
+          
+          if (await file.exists()) {
+            return new Response(file);
+          }
+        }
+        
         set.status = 404;
         return 'File not found';
       }
       
-      return serveHTML(root, hasRouter);
+      return serveHTML(root, hasRouter, config);
     })
     
     .get('/hmr-client.js', () => {
@@ -142,23 +154,35 @@ ws.onclose = () => {
   logger.success(`🚀 Server running at http://localhost:${port}`);
   logger.info(`📁 Serving: ${root}`);
   
-  setupWatcher(root, compiledDir, clients, () => {
+  setupWatcher(root, compiledDir, clients, async () => {
     hasRouter = existsSync(join(compiledDir, 'router.js'));
   });
   
   return app;
 }
 
-function serveHTML(root, hasRouter) {
+function serveHTML(root, hasRouter, config) {
+  const meta = config.meta || {};
+  
   const html = `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${meta.lang || 'en'}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BertUI App - Dev</title>
+  <title>${meta.title || 'BertUI App'}</title>
   
-  <!-- Import Map for React and dependencies -->
+  ${meta.description ? `<meta name="description" content="${meta.description}">` : ''}
+  ${meta.keywords ? `<meta name="keywords" content="${meta.keywords}">` : ''}
+  ${meta.author ? `<meta name="author" content="${meta.author}">` : ''}
+  ${meta.themeColor ? `<meta name="theme-color" content="${meta.themeColor}">` : ''}
+  
+  ${meta.ogTitle ? `<meta property="og:title" content="${meta.ogTitle || meta.title}">` : ''}
+  ${meta.ogDescription ? `<meta property="og:description" content="${meta.ogDescription || meta.description}">` : ''}
+  ${meta.ogImage ? `<meta property="og:image" content="${meta.ogImage}">` : ''}
+  
+  <link rel="icon" type="image/svg+xml" href="/public/favicon.svg">
+  
   <script type="importmap">
   {
     "imports": {
@@ -171,7 +195,6 @@ function serveHTML(root, hasRouter) {
   </script>
   
   <style>
-    /* Inline basic styles since we're skipping CSS for now */
     * {
       margin: 0;
       padding: 0;
@@ -185,10 +208,6 @@ function serveHTML(root, hasRouter) {
 <body>
   <div id="root"></div>
   <script type="module" src="/hmr-client.js"></script>
-  ${hasRouter 
-    ? '<script type="module" src="/compiled/router.js"></script>' 
-    : ''
-  }
   <script type="module" src="/compiled/main.js"></script>
 </body>
 </html>`;
@@ -218,6 +237,7 @@ function getContentType(ext) {
 
 function setupWatcher(root, compiledDir, clients, onRecompile) {
   const srcDir = join(root, 'src');
+  const configPath = join(root, 'bertui.config.js');
   
   if (!existsSync(srcDir)) {
     logger.warn('src/ directory not found');
@@ -245,7 +265,7 @@ function setupWatcher(root, compiledDir, clients, onRecompile) {
         await compileProject(root);
         
         if (onRecompile) {
-          onRecompile();
+          await onRecompile();
         }
         
         for (const client of clients) {
@@ -260,4 +280,20 @@ function setupWatcher(root, compiledDir, clients, onRecompile) {
       }
     }
   });
+  
+  if (existsSync(configPath)) {
+    watch(configPath, async (eventType) => {
+      if (eventType === 'change') {
+        logger.info('📝 Config changed, reloading...');
+        
+        for (const client of clients) {
+          try {
+            client.send(JSON.stringify({ type: 'reload', file: 'bertui.config.js' }));
+          } catch (e) {
+            clients.delete(client);
+          }
+        }
+      }
+    });
+  }
 }
